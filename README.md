@@ -1,99 +1,268 @@
 # augpool
 
-Pool multiple Augment Code credentials and pick the least-used account.
+Pool multiple [Augment Code](https://www.augmentcode.com) credentials and prefer
+the **least-used** account so org credit spend stays balanced.
 
-**Identity is always the full email.** No separate ids, no me.
+Identity is always the **full email**. No short ids.
+
+| | |
+|---|---|
+| **Home** | `~/.augpool/` — override with `AUGPOOL_HOME` or `--home` |
+| **Runtime** | Python **3.11+**, zero third-party deps |
+| **Auth inject** | `AUGMENT_SESSION_AUTH` and `auggie --augment-session-json` |
+
+---
 
 ## Install
 
-    cd augpool
-    pip install -e ".[dev]"
+The `augpool` binary must sit on a **stable PATH** that both your terminal and
+agent hosts (e.g. kandev boot scripts) can resolve. A project venv alone is
+usually **not** enough for agents.
 
-Requires Python 3.11+. Zero runtime deps.
+### Recommended — pipx
+
+```bash
+pipx install git+https://github.com/zeval/augpool.git
+# → ~/.local/bin/augpool   (keep ~/.local/bin on PATH)
+```
+
+### User install
+
+```bash
+python3 -m pip install --user git+https://github.com/zeval/augpool.git
+# ensure ~/.local/bin is on PATH for login shells *and* GUI / agent processes
+```
+
+### Editable (development)
+
+```bash
+git clone https://github.com/zeval/augpool.git
+cd augpool
+python3 -m pip install -e ".[dev]"
+```
+
+Editable installs place the console script in **whichever** environment’s
+`bin/` you pip into (conda base, Homebrew Python, …). That only works for
+kandev if that `bin/` is on the agent’s PATH.
+
+**Avoid for agent use:**
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate && pip install …
+```
+
+That works only while the venv is activated. kandev will not find `augpool`.
+
+---
+
+## First things to do
+
+Do these in order. Every example uses placeholders only (`you@example.com`).
+
+### 1. Import **your** account (start here)
+
+You need at least one credential in the pool. Easiest path: whatever auggie is
+already logged in as on this machine.
+
+```bash
+# After normal `auggie login` (or any existing ~/.augment/session.json)
+augpool import --self --email you@example.com
+```
+
+Or point at a session file you already have:
+
+```bash
+augpool import --session ./session.json --email you@example.com
+
+# stdin JSON
+augpool import --session - --email you@example.com < session.json
+
+# replace if that email is already in the pool
+augpool import --session ./session.json --email you@example.com --force
+```
+
+Auggie session JSON looks like `{ "accessToken", "tenantURL", "scopes"? }`
+(typical path: `~/.augment/session.json`). The file has **no email field**, so
+`--email` is always required for `--self` / `--session`.
+
+```bash
+augpool list          # confirm you’re in the pool
+augpool               # run auggie under the pool (= augpool run -- auggie)
+augpool -p -q "ping"
+```
+
+### 2. Export **your** account (share with teammates)
+
+```bash
+# By email (preferred — no Analytics wait)
+augpool export you@example.com
+# → one line, unpadded base64url, shell-safe (no quotes):
+# eyJlbWFpbCI6InlvdUBleGFtcGxlLmNvbSIs...
+
+# Or whoever is currently written into ~/.augment/session.json
+augpool export --self
+```
+
+Send that **one token** over a private channel. It is a full credential.
+
+Optional shapes:
+
+```bash
+augpool export --json you@example.com    # pretty envelope
+eval "$(augpool export --env you@example.com)"   # shell inject (history risk)
+```
+
+### 3. Import **from other users** (grow the pool)
+
+They run step 2 and paste you a blob. You do **not** pass `--email` — it’s
+inside the blob.
+
+```bash
+augpool import eyJlbWFpbCI6InRlYW1tYXRlQGV4YW1wbGUuY29tLC4uLg
+augpool import --force eyJ...    # overwrite if that email already exists
+```
+
+If they give you a **session file** instead of a blob, you supply their email:
+
+```bash
+augpool import --session ./teammate-session.json --email teammate@example.com
+# same thing:
+augpool add --email teammate@example.com --session ./teammate-session.json
+```
+
+```bash
+augpool list          # ranked least-used first
+```
+
+**Rules**
+
+| Mode | Needs |
+|---|---|
+| Share blob (`eyJ…`) | token only (email embedded) |
+| `--self` | `--email` |
+| `--session` | `--email` |
+
+Pass **only one** of blob / `--self` / `--session`.
+
+Treat blobs and session files like passwords. Import others only with consent.
+Never commit them. Never paste them into public chat.
+
+Blob shape (v2): `{ v, email, label, session }` — unpadded base64url, no prefix.
+
+---
 
 ## Default: auggie wrapper
 
-Bare `augpool` is `augpool run -- auggie`:
+Bare `augpool` is `augpool run -- auggie …`:
 
-    augpool                         # interactive auggie with pooled auth
-    augpool -p -q "ping"            # print mode
-    augpool --acp --allow-indexing  # kandev ACP
-    augpool --email you@x.com -p hi # force account
-    augpool list                    # still a subcommand
+```bash
+augpool                              # interactive
+augpool -p -q "hello"                # print mode
+augpool --email you@example.com …    # force account
+augpool list                         # subcommands still work
+```
 
-## Quick start
+### kandev / ACP
 
-    # Register the currently logged-in auggie user
-    augpool import --self --email you@company.com
-    augpool import --session ./session.json --email you@company.com
+```bash
+augpool --acp --allow-indexing
+# equivalent:
+augpool run -- npx -y @augmentcode/auggie --acp --allow-indexing
+```
 
-    # Or add any session.json
-    augpool add --email other@company.com --session ./other-session.json
+For `--acp` / `--mcp`, augpool does **not** buffer stdio: pick account → inject
+auth → `os.exec` the child so the host owns the protocol pipes.
 
-    # Share (one shell-safe base64url token — no quotes; email is inside the blob)
-    augpool export you@company.com
-    # eyJlbWFpbCI6InlvdUBjb21wYW55LmNvbSIs...
+**Agent boot** must resolve `augpool` on PATH (pipx, user install, or an env
+whose `bin/` is always on PATH — not an unactivated venv).
 
-    # After augpool use you@company.com:
-    augpool export --self
+---
 
-    # Teammate pastes:
-    augpool import eyJlbWFpbCI6InlvdUBjb21wYW55LmNvbSIs...
+## IDE session file
 
-    augpool list
-    augpool run -- auggie -p -q "ping"
-    eval "$(augpool export --env you@company.com)"
-    augpool use
-    augpool use you@company.com
-    augpool restore
+```bash
+augpool use                      # least-used → ~/.augment/session.json
+augpool use you@example.com      # force
+augpool restore                  # undo last use
+```
 
-Data lives in ~/.augpool/ (override with AUGPOOL_HOME or --home).
+Prefer `augpool` / `augpool run` for CLI so the global session file stays untouched.
 
-## Share blob
+---
 
-export prints unpadded base64url of {v,email,label,session} (v=2).
-No prefix → paste without quoting: augpool import eyJ…
+## Analytics ranking
 
-The blob is the full credential. Do not put it in git/public chat.
+Least-used score uses each account’s session token against:
 
-## Analytics
+`GET https://api.augmentcode.com/analytics/v0/credit-usage-by-user`
 
-Usage-aware ranking uses each account session accessToken against:
+- Cache: `~/.augpool/cache/` (default TTL ~5 minutes)
+- Auto-pick (`list` / `next` / bare run) refreshes when stale
+- Explicit targets (`export you@…`, `use you@…`) skip refresh
+- No Analytics access → local use counters
 
-GET https://api.augmentcode.com/analytics/v0/credit-usage-by-user
+```bash
+augpool refresh
+augpool list --refresh
+```
 
-Cache TTL defaults to 5 minutes. use / run / list / next refresh when expired.
+---
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
-| import --self --email … | Load ~/.augment/session.json under that email |
-| import blob\|file\|- | Import share blob from export |
-| add --email … --session … | Add session.json keyed by email |
-| export you@x / export --self | Print base64url share blob (--env / --json) |
-| remove you@x | Drop an account |
-| list | Ranked table (--json, --refresh) |
-| refresh | Pull Analytics now |
-| next | Print least-used email |
-| use [email] | Write session to ~/.augment/session.json |
-| run -- cmd | Run cmd with pooled auth + failover |
-| status | Home, active, ranks |
-| restore | Undo last use |
+| `import --self --email …` | Load `~/.augment/session.json` |
+| `import --session PATH --email …` | Load a session file (`-` = stdin JSON) |
+| `import <blob>` | Import portable share blob |
+| `add --email … --session …` | Add / replace from session file |
+| `export [email] \| --self` | Print share blob (`--env`, `--json`) |
+| `remove you@example.com` | Drop account |
+| `list` | Ranked table (`--json`, `--refresh`) |
+| `refresh` | Pull Analytics now |
+| `next` | Print least-used email |
+| `use [email]` | Write into `~/.augment/session.json` |
+| `run -- <cmd…>` | Run with pooled auth + rate-limit failover |
+| `status` | Home, active account, ranks |
+| `restore` | Restore session file from backup |
 
-## ACP / MCP (kandev)
+---
 
-    augpool run -- npx -y @augmentcode/auggie --acp --allow-indexing
+## Layout
 
-For --acp / --mcp, run does not capture stdio. It picks an account, injects auth, then os.execs the child.
+```text
+~/.augpool/
+  pool.json            # registry (emails, paths, weights)
+  state.json           # local uses, cooldowns, locks
+  cache/usage.json     # Analytics snapshot
+  creds/<email>.json   # per-account session (mode 0600)
+  backups/             # previous ~/.augment/session.json
+```
+
+---
 
 ## Security
 
-- Creds stored mode 0600 under ~/.augpool/creds/
-- Prefer run over export --env
-- Never commit session files or share blobs
+- Cred files are mode `0600`
+- Prefer `augpool run` over `export --env`
+- Never commit `creds/`, session JSON, or share blobs
+- A share blob **is** the full credential — rotate if it leaks
+
+---
 
 ## Tests
 
-    pip install -e ".[dev]"
-    pytest -q
+```bash
+python3 -m pip install -e ".[dev]"
+pytest -q
+```
+
+---
+
+## Limits
+
+- Auth is fixed for one `auggie` process lifetime; failover restarts the child
+  (appends `--continue` when safe)
+- ACP / MCP protocol mode: single pick + `exec` (no mid-flight failover)
+- MCP OAuth tokens are stored by Auggie **per Augment account**, separate from
+  this pool
