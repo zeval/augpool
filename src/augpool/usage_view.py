@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from augpool.pool import Pool
@@ -17,6 +18,8 @@ _DIM = "2"
 _CYAN = "36"
 _GREEN = "32"
 _YELLOW = "33"
+_SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
+_SESSION_TIMELINE_DAYS = 30
 
 
 def format_compact(value: float | int | None) -> str:
@@ -51,6 +54,22 @@ def format_relative_time(timestamp: float | None, *, now: float | None = None) -
     if age < 86_400:
         return f"{age // 3_600}h ago"
     return f"{age // 86_400}d ago"
+
+
+def format_sparkline(values: list[int]) -> str:
+    """Render non-negative counts with visible zero days and a relative peak."""
+    counts = [max(0, int(value)) for value in values]
+    peak = max(counts, default=0)
+    if peak == 0:
+        return "·" * len(counts)
+    points: list[str] = []
+    for count in counts:
+        if count == 0:
+            points.append("·")
+            continue
+        level = math.ceil((count / peak) * len(_SPARK_BLOCKS)) - 1
+        points.append(_SPARK_BLOCKS[level])
+    return "".join(points)
 
 
 def _paint(text: str, code: str, enabled: bool) -> str:
@@ -105,6 +124,26 @@ def usage_report_payload(
     ordered_accounts = [item.account for item in ranked]
     ordered_accounts.extend(account for account in pool.accounts if not account.enabled)
 
+    end_day = datetime.fromtimestamp(now, timezone.utc).date()
+    start_day = end_day - timedelta(days=_SESSION_TIMELINE_DAYS - 1)
+    tracked_by_account = {account.email: 0 for account in pool.accounts}
+    history_days: list[dict[str, Any]] = []
+    for offset in range(_SESSION_TIMELINE_DAYS):
+        day_key = (start_day + timedelta(days=offset)).isoformat()
+        by_account: dict[str, int] = {}
+        for account in pool.accounts:
+            count = state.for_account(account.email).sessions_by_day.get(day_key, 0)
+            if count > 0:
+                by_account[account.email] = count
+                tracked_by_account[account.email] += count
+        history_days.append(
+            {
+                "date": day_key,
+                "sessions": sum(by_account.values()),
+                "accounts": by_account,
+            }
+        )
+
     rows: list[dict[str, Any]] = []
     analytics_available = usage is not None
     for account in ordered_accounts:
@@ -130,6 +169,7 @@ def usage_report_payload(
                 "credits_consumed": credits,
                 "credit_share": None,
                 "local_sessions": account_state.local_uses,
+                "tracked_sessions_30d": tracked_by_account.get(account.email, 0),
                 "last_selected_at": account_state.last_selected_at,
                 "source": (
                     "analytics"
@@ -170,6 +210,13 @@ def usage_report_payload(
             "enabled_accounts": len(pool.enabled_accounts()),
             "credits_consumed": total_credits,
             "local_sessions": sum(int(row["local_sessions"]) for row in rows),
+        },
+        "session_history": {
+            "timezone": "UTC",
+            "start_date": start_day.isoformat(),
+            "end_date": end_day.isoformat(),
+            "tracked_sessions": sum(day["sessions"] for day in history_days),
+            "by_day": history_days,
         },
         "accounts": rows,
         "errors": list((cache or {}).get("errors") or []),
@@ -243,7 +290,35 @@ def render_usage_dashboard(
             _plural(totals["local_sessions"], "session"),
         )
     )
-    lines.extend(("", _clip(summary, width), _paint("─" * width, _DIM, color)))
+    lines.extend(("", _clip(summary, width), ""))
+
+    history = report["session_history"]
+    history_title = (
+        f"Sessions over time · {_SESSION_TIMELINE_DAYS}d UTC · "
+        f"{history['tracked_sessions']} tracked"
+    )
+    lines.append(_paint(_clip(history_title, width), _BOLD, color))
+    visible_days = max(1, min(len(history["by_day"]), width - 12))
+    chart_days = history["by_day"][-visible_days:]
+    chart_start = chart_days[0]["date"][5:]
+    chart_end = chart_days[-1]["date"][5:]
+    sparkline = format_sparkline([day["sessions"] for day in chart_days])
+    lines.append(
+        _paint(chart_start, _DIM, color)
+        + " "
+        + _paint(sparkline, _CYAN, color)
+        + " "
+        + _paint(chart_end, _DIM, color)
+    )
+    if history["tracked_sessions"] == 0:
+        lines.append(
+            _paint(
+                _clip("No dated sessions yet · tracking starts after upgrade", width),
+                _DIM,
+                color,
+            )
+        )
+    lines.append(_paint("─" * width, _DIM, color))
 
     if not rows:
         lines.extend(
@@ -273,6 +348,15 @@ def render_usage_dashboard(
         else:
             share = 0.0
             right = f"—  {status}"
+
+        if width < 32:
+            if row["credits_consumed"] is not None:
+                right = f"{format_compact(row['credits_consumed'])} {status}"
+            elif usage is None:
+                right = f"{row['local_sessions']}s {status}"
+            else:
+                right = f"— {status}"
+        right = _clip(right, width - 5)
 
         prefix_width = 2
         name_width = max(1, width - prefix_width - 2 - len(right))

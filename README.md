@@ -225,6 +225,9 @@ augpool usage
 2026-07-08 → 2026-08-06 · updated 2m ago
 
 3 accounts · 8.4k credits · 17 sessions
+
+Sessions over time · 30d UTC · 12 tracked
+07-08 ·····················▁··▃·█▂ 08-06
 ────────────────────────────────────────────────────────────────────────
 ● teammate@example.com                         1.8k  21.4%  active
   █████████░░░░░░░░░░░░░░░░░░░░░░░░  6 sessions · used 4m ago
@@ -236,6 +239,11 @@ they are not Augment's vendor-side conversation count. The view also surfaces
 active, cooldown, disabled, weight, last-used, cache, and partial-refresh
 information when available. Without Analytics data, bars fall back to local
 sessions.
+
+Dated session tracking starts after installing this version; augpool does not
+assign older lifetime counts to invented dates. It keeps 90 days of per-account
+UTC daily buckets and shows the latest 30 days in the dashboard. `--json`
+includes daily totals and per-account counts for the same 30-day window.
 
 ---
 
@@ -265,7 +273,7 @@ sessions.
 ```text
 ~/.augpool/
   pool.json            # registry (emails, paths, weights)
-  state.json           # local uses, cooldowns, locks
+  state.json           # local uses, daily session history, cooldowns, locks
   cache/usage.json     # Analytics snapshot
   creds/<email>.json   # per-account session (mode 0600)
   backups/             # previous ~/.augment/session.json

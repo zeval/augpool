@@ -8,6 +8,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -19,17 +20,22 @@ except ImportError:  # pragma: no cover - non-posix
     fcntl = None  # type: ignore
 
 
+STATE_VERSION = 2
+SESSION_HISTORY_RETENTION_DAYS = 90
+
+
 @dataclass
 class AccountState:
     local_uses: int = 0
     last_selected_at: float | None = None
     cooldown_until: float | None = None
     last_error: str | None = None
+    sessions_by_day: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
 class State:
-    version: int = 1
+    version: int = STATE_VERSION
     accounts: dict[str, AccountState] = field(default_factory=dict)
 
     def for_account(self, account_id: str) -> AccountState:
@@ -39,11 +45,23 @@ class State:
 
 
 def _account_from_dict(raw: dict[str, Any]) -> AccountState:
+    sessions_by_day: dict[str, int] = {}
+    history = raw.get("sessions_by_day") or {}
+    if isinstance(history, dict):
+        for raw_day, raw_count in history.items():
+            try:
+                day = date.fromisoformat(str(raw_day)).isoformat()
+                count = int(raw_count)
+            except (TypeError, ValueError):
+                continue
+            if count > 0:
+                sessions_by_day[day] = count
     return AccountState(
         local_uses=int(raw.get("local_uses", 0)),
         last_selected_at=raw.get("last_selected_at"),
         cooldown_until=raw.get("cooldown_until"),
         last_error=raw.get("last_error"),
+        sessions_by_day=sessions_by_day,
     )
 
 
@@ -51,7 +69,10 @@ def state_from_dict(raw: dict[str, Any]) -> State:
     accounts = {
         k: _account_from_dict(v) for k, v in (raw.get("accounts") or {}).items()
     }
-    return State(version=int(raw.get("version", 1)), accounts=accounts)
+    return State(
+        version=max(STATE_VERSION, int(raw.get("version", 1))),
+        accounts=accounts,
+    )
 
 
 def empty_state() -> State:
@@ -116,6 +137,15 @@ def record_selection(state: State, account_id: str, now: float | None = None) ->
     ac.local_uses += 1
     ac.last_selected_at = now
     ac.last_error = None
+    selected_day = datetime.fromtimestamp(now, timezone.utc).date()
+    day_key = selected_day.isoformat()
+    ac.sessions_by_day[day_key] = ac.sessions_by_day.get(day_key, 0) + 1
+    cutoff = selected_day - timedelta(days=SESSION_HISTORY_RETENTION_DAYS - 1)
+    ac.sessions_by_day = {
+        key: count
+        for key, count in ac.sessions_by_day.items()
+        if date.fromisoformat(key) >= cutoff
+    }
 
 
 def set_cooldown(
