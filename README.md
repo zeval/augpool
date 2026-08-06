@@ -1,5 +1,7 @@
 # augpool
 
+[![Build](https://github.com/zeval/augpool/actions/workflows/build.yml/badge.svg)](https://github.com/zeval/augpool/actions/workflows/build.yml)
+
 Pool multiple [Augment Code](https://www.augmentcode.com) credentials and prefer
 the **least-used** account so org credit spend stays balanced.
 
