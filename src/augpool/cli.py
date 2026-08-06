@@ -18,7 +18,9 @@ from augpool.pool import (
     remove_account,
     resolve_session_file,
     set_active,
+    update_account,
 )
+from augpool.reporting import collect_stats
 from augpool.runner import run_pooled
 from augpool.select import pick, rank_accounts
 from augpool.session_io import (
@@ -49,6 +51,13 @@ def _resolve_who(pool, state, who: str | None, usage):
 
 def _usage_map(pool, root: Path, *, force: bool = False, refresh_if_stale: bool = True):
     return get_fresh_usage(pool, root=root, force=force, refresh_if_stale=refresh_if_stale)
+
+
+def _print_mutation(args: argparse.Namespace, action: str, email: str, human: str) -> None:
+    if bool(getattr(args, "json", False)):
+        print(json.dumps({"ok": True, "action": action, "email": email}))
+    else:
+        print(human)
 
 
 def cmd_add(args: argparse.Namespace) -> int:
@@ -132,7 +141,12 @@ def cmd_import(args: argparse.Namespace) -> int:
             label=args.label or email,
             force=force,
         )
-        print(f"imported {account.email} from {source_label}")
+        _print_mutation(
+            args,
+            "import",
+            account.email,
+            f"imported {account.email} from {source_label}",
+        )
         return 0
 
     if not args.blob:
@@ -157,7 +171,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         label=env.get("label") or "",
         force=bool(args.force),
     )
-    print(f"imported {account.email}")
+    _print_mutation(args, "import", account.email, f"imported {account.email}")
     return 0
 
 
@@ -166,8 +180,42 @@ def cmd_remove(args: argparse.Namespace) -> int:
     root = _root_from_args(args)
     pool = load_pool(root)
     account = remove_account(pool, args.email, root=root)
-    print(f"removed {account.email}")
+    _print_mutation(args, "remove", account.email, f"removed {account.email}")
     return 0
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    root = _root_from_args(args)
+    pool = load_pool(root)
+    enabled = True if args.enable else False if args.disable else None
+    account = update_account(
+        pool,
+        args.email,
+        enabled=enabled,
+        weight=args.weight,
+        root=root,
+    )
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "action": "update",
+                    "email": account.email,
+                    "enabled": account.enabled,
+                    "weight": account.weight,
+                    "active": pool.active_email == account.email,
+                }
+            )
+        )
+    else:
+        print(
+            f"updated {account.email}: enabled={account.enabled} "
+            f"weight={account.weight:g}"
+        )
+    return 0
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     root = _root_from_args(args)
     pool = load_pool(root)
@@ -244,6 +292,17 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stats(args: argparse.Namespace) -> int:
+    if not args.json:
+        raise ValueError("stats requires --json")
+    snapshot = collect_stats(
+        _root_from_args(args),
+        force_refresh=bool(args.refresh),
+    )
+    print(json.dumps(snapshot, indent=2))
+    return 0
+
+
 def cmd_refresh(args: argparse.Namespace) -> int:
     root = _root_from_args(args)
     pool = load_pool(root)
@@ -286,10 +345,13 @@ def cmd_use(args: argparse.Namespace) -> int:
         backup = backup_and_use(session, target, root=root)
         record_selection(state, account.email)
         set_active(pool, account.email, root=root)
-    print(f"active -> {account.email}")
-    print(f"wrote {paths.expand(target)}")
-    if backup:
-        print(f"backup {backup}")
+    if args.json:
+        _print_mutation(args, "use", account.email, "")
+    else:
+        print(f"active -> {account.email}")
+        print(f"wrote {paths.expand(target)}")
+        if backup:
+            print(f"backup {backup}")
     return 0
 
 
@@ -447,14 +509,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     imp_p.add_argument("--label", default="")
     imp_p.add_argument("--force", action="store_true", help="replace existing email")
+    imp_p.add_argument("--json", action="store_true")
     imp_p.set_defaults(func=cmd_import)
     rm_p = sub.add_parser("remove", help="remove an account by email")
     rm_p.add_argument("email", help="full email (or unique local-part)")
+    rm_p.add_argument("--json", action="store_true")
     rm_p.set_defaults(func=cmd_remove)
+    update_p = sub.add_parser("update", help="change account enabled state or weight")
+    update_p.add_argument("email", help="full email (or unique local-part)")
+    enabled_group = update_p.add_mutually_exclusive_group()
+    enabled_group.add_argument("--enable", action="store_true")
+    enabled_group.add_argument("--disable", action="store_true")
+    update_p.add_argument("--weight", type=float)
+    update_p.add_argument("--json", action="store_true")
+    update_p.set_defaults(func=cmd_update)
     ls_p = sub.add_parser("list", help="list accounts ranked least-used first")
     ls_p.add_argument("--json", action="store_true")
     ls_p.add_argument("--refresh", action="store_true")
     ls_p.set_defaults(func=cmd_list)
+    stats_p = sub.add_parser("stats", help="print versioned machine-readable stats")
+    stats_p.add_argument("--json", action="store_true")
+    stats_p.add_argument("--refresh", action="store_true")
+    stats_p.set_defaults(func=cmd_stats)
     rf_p = sub.add_parser("refresh", help="pull Analytics credit usage now")
     rf_p.set_defaults(func=cmd_refresh)
     nx_p = sub.add_parser("next", help="print least-used account email")
@@ -462,6 +538,7 @@ def build_parser() -> argparse.ArgumentParser:
     nx_p.set_defaults(func=cmd_next)
     use_p = sub.add_parser("use", help="write account session to ~/.augment/session.json")
     use_p.add_argument("email", nargs="?", default=None)
+    use_p.add_argument("--json", action="store_true")
     use_p.set_defaults(func=cmd_use)
     ex_p = sub.add_parser("export", help="print portable share blob (email is identity)")
     ex_p.add_argument("email", nargs="?", default=None)
@@ -488,7 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
 # Built-in subcommands. Anything else at argv[0] is treated as auggie args
 # via the default: augpool [run-opts] [auggie-args...]  ==  augpool run [run-opts] -- auggie [auggie-args...]
 _SUBCOMMANDS = frozenset({
-    "add", "import", "remove", "list", "refresh", "next", "use", "export",
+    "add", "import", "remove", "update", "list", "stats", "refresh", "next", "use", "export",
     "run", "status", "restore", "help",
 })
 

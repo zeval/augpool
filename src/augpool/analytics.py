@@ -7,6 +7,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -16,6 +17,17 @@ from augpool.pool import Account, Pool, resolve_access_token
 from augpool.session_io import write_json_atomic
 
 HttpGetter = Callable[[str, dict[str, str]], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class UsageResult:
+    """Usage map plus cache provenance for machine-readable reporting."""
+
+    by_id: dict[str, float] | None
+    cache: dict[str, Any] | None
+    refresh_attempted: bool
+    refresh_succeeded: bool
+    errors: list[str]
 
 
 def default_date_window(today: date | None = None) -> tuple[str, str]:
@@ -279,7 +291,7 @@ def _refresh_had_usable_data(cache: dict[str, Any], had_token: bool) -> bool:
     return cache.get("by_id") is not None
 
 
-def get_fresh_usage(
+def get_usage_result(
     pool: Pool,
     *,
     root: Path | None = None,
@@ -287,7 +299,7 @@ def get_fresh_usage(
     http_get: HttpGetter | None = None,
     now: float | None = None,
     refresh_if_stale: bool = True,
-) -> dict[str, float] | None:
+) -> UsageResult:
     """
     Return usage map for ranking.
 
@@ -297,10 +309,10 @@ def get_fresh_usage(
     now = time.time() if now is None else now
     cache = load_usage_cache(root)
     if not force and cache_is_fresh(cache, pool.usage_cache_ttl_seconds, now=now):
-        return _cache_by_id(cache)
+        return UsageResult(_cache_by_id(cache), cache, False, False, [])
 
     if not refresh_if_stale and not force:
-        return _cache_by_id(cache)
+        return UsageResult(_cache_by_id(cache), cache, False, False, [])
 
     # Stale/missing (or force): pull now.
     had_token = any(resolve_access_token(a, root) for a in pool.enabled_accounts())
@@ -308,15 +320,37 @@ def get_fresh_usage(
     stale = _cache_by_id(cache)
     try:
         new_cache = refresh_usage(pool, root=root, http_get=http_get, now=now)
-    except Exception:
-        return stale
+    except Exception as exc:  # noqa: BLE001
+        return UsageResult(stale, cache, True, False, [str(exc)])
 
     if _refresh_had_usable_data(new_cache, had_token):
-        return _cache_by_id(new_cache)
+        errors = [str(error) for error in (new_cache.get("errors") or [])]
+        return UsageResult(_cache_by_id(new_cache), new_cache, True, True, errors)
 
     # Failed/no-token pull: restore previous on-disk cache so a blip doesn't
     # zero out ranks, and ranking still sees last known credits.
+    errors = [str(error) for error in (new_cache.get("errors") or [])]
     if cache is not None and stale is not None:
         save_usage_cache(cache, root)
-        return stale
-    return _cache_by_id(new_cache)
+        return UsageResult(stale, cache, True, False, errors)
+    return UsageResult(_cache_by_id(new_cache), new_cache, True, False, errors)
+
+
+def get_fresh_usage(
+    pool: Pool,
+    *,
+    root: Path | None = None,
+    force: bool = False,
+    http_get: HttpGetter | None = None,
+    now: float | None = None,
+    refresh_if_stale: bool = True,
+) -> dict[str, float] | None:
+    """Compatibility wrapper returning only the usage map for ranking."""
+    return get_usage_result(
+        pool,
+        root=root,
+        force=force,
+        http_get=http_get,
+        now=now,
+        refresh_if_stale=refresh_if_stale,
+    ).by_id

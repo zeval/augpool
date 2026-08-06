@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
 import re
+import time
 from pathlib import Path
 
+from augpool.analytics import save_usage_cache
 from augpool.cli import main
 from augpool.session_io import decode_share_blob, write_json_atomic
 
@@ -59,6 +62,100 @@ def test_add_list_use_restore(home: Path, capsys):
     assert restored["accessToken"] == "old"
 
 
+def test_stats_json_emits_versioned_safe_snapshot(
+    home: Path, two_account_pool, capsys
+):
+    save_usage_cache(
+        {
+            "fetched_at": time.time(),
+            "start_date": "2026-07-01",
+            "end_date": "2026-07-30",
+            "by_id": {"alice@acme.com": 5, "bob@acme.com": 10},
+            "errors": [],
+            "fetches_ok": 1,
+            "tenants_queried": 1,
+        },
+        home,
+    )
+
+    assert main(["--home", str(home), "stats", "--json"]) == 0
+    snapshot = json.loads(capsys.readouterr().out)
+    assert snapshot["schema_version"] == 1
+    assert [row["email"] for row in snapshot["accounts"]] == [
+        "alice@acme.com",
+        "bob@acme.com",
+    ]
+    assert "session_path" not in json.dumps(snapshot)
+
+
+def test_update_json_changes_account_and_clears_disabled_active(
+    home: Path, two_account_pool, capsys
+):
+    from augpool.pool import load_pool, save_pool
+
+    two_account_pool.active_email = "alice@acme.com"
+    save_pool(two_account_pool, home)
+
+    assert main([
+        "--home",
+        str(home),
+        "update",
+        "alice@acme.com",
+        "--disable",
+        "--weight",
+        "2.5",
+        "--json",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "ok": True,
+        "action": "update",
+        "email": "alice@acme.com",
+        "enabled": False,
+        "weight": 2.5,
+        "active": False,
+    }
+    pool = load_pool(home)
+    assert pool.active_email is None
+    assert pool.get("alice@acme.com").enabled is False
+    assert pool.get("alice@acme.com").weight == 2.5
+
+
+def test_use_json_emits_only_mutation_metadata(home: Path, two_account_pool, capsys):
+    assert main([
+        "--home",
+        str(home),
+        "use",
+        "alice@acme.com",
+        "--json",
+    ]) == 0
+
+    output = capsys.readouterr().out
+    assert json.loads(output) == {
+        "ok": True,
+        "action": "use",
+        "email": "alice@acme.com",
+    }
+    assert str(home) not in output
+
+
+def test_remove_json_emits_mutation_metadata(home: Path, two_account_pool, capsys):
+    assert main([
+        "--home",
+        str(home),
+        "remove",
+        "bob@acme.com",
+        "--json",
+    ]) == 0
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "action": "remove",
+        "email": "bob@acme.com",
+    }
+
+
 def test_export_import_blob_roundtrip(home: Path, capsys, tmp_path: Path):
     session = home / "in.json"
     write_json_atomic(
@@ -93,6 +190,35 @@ def test_export_import_blob_roundtrip(home: Path, capsys, tmp_path: Path):
     creds = list((other / "creds").glob("*.json"))
     assert len(creds) == 1
     assert json.loads(creds[0].read_text())["accessToken"] == "tok-secret"
+
+
+def test_import_blob_from_stdin_has_safe_json_response(
+    home: Path, capsys, monkeypatch
+):
+    from augpool.session_io import build_share_envelope, encode_share_blob
+
+    blob = encode_share_blob(
+        build_share_envelope(
+            email="alice@example.com",
+            label="Alice",
+            session={
+                "accessToken": "tok-never-print",
+                "tenantURL": "https://e5.api.augmentcode.com/",
+                "scopes": ["r"],
+            },
+        )
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(blob + "\n"))
+
+    assert main(["--home", str(home), "import", "-", "--json"]) == 0
+    output = capsys.readouterr().out
+    assert json.loads(output) == {
+        "ok": True,
+        "action": "import",
+        "email": "alice@example.com",
+    }
+    assert blob not in output
+    assert "tok-never-print" not in output
 
 
 def test_export_env_flag(home: Path, capsys):
@@ -243,4 +369,3 @@ def test_import_session_file(home: Path, capsys):
         "--session", str(sess),
         "--email", "bob@x.com",
     ]) == 1
-

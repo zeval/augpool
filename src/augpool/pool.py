@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
@@ -282,6 +283,35 @@ def remove_account(pool: Pool, who: str, root: Path | None = None) -> Account:
     save_pool(pool, root)
     if session_file.exists() and session_file.is_relative_to(paths.creds_dir(root)):
         session_file.unlink(missing_ok=True)
+    return account
+
+
+def update_account(
+    pool: Pool,
+    who: str,
+    *,
+    enabled: bool | None = None,
+    weight: float | None = None,
+    root: Path | None = None,
+) -> Account:
+    """Update mutable account settings and persist the pool atomically."""
+    if enabled is None and weight is None:
+        raise ValueError("provide enabled or weight")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise ValueError("enabled must be a boolean")
+    if weight is not None and (
+        isinstance(weight, bool) or not math.isfinite(weight) or weight <= 0
+    ):
+        raise ValueError("weight must be a finite number > 0")
+
+    account = find_account(pool, who)
+    if enabled is not None:
+        account.enabled = enabled
+        if not enabled and pool.active_email == account.email:
+            pool.active_email = None
+    if weight is not None:
+        account.weight = weight
+    save_pool(pool, root)
     return account
 
 

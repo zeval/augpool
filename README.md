@@ -206,6 +206,40 @@ augpool refresh
 augpool list --refresh
 ```
 
+### Machine integrations
+
+Augpool 0.2 adds a versioned, credential-free snapshot for dashboards and
+other local integrations:
+
+```bash
+augpool stats --json
+augpool stats --json --refresh
+```
+
+The top-level object has `schema_version: 1`, cache freshness/window/errors,
+and ranked account rows. It deliberately excludes session paths, tenant URLs,
+notes, tokens, session JSON, and share blobs. A failed refresh preserves the
+last usable cache while returning the new attempt errors.
+
+Account settings can be changed without editing `pool.json`:
+
+```bash
+augpool update you@example.com --weight 2.5 --json
+augpool update you@example.com --disable --json
+augpool update you@example.com --enable --json
+```
+
+`import`, `remove`, and `use` also accept `--json`. Send share blobs on stdin
+when another process invokes Augpool so the credential does not enter process
+arguments:
+
+```bash
+printf '%s\n' "$AUGPOOL_SHARE_BLOB" | augpool import - --json
+```
+
+Default `augpool export EMAIL` still prints one base64url credential token.
+Treat that stdout as secret: do not log, cache, or render it.
+
 ---
 
 ## Commands
@@ -218,7 +252,9 @@ augpool list --refresh
 | `add --email … --session …` | Add / replace from session file |
 | `export [email] \| --self` | Print share blob (`--env`, `--json`) |
 | `remove you@example.com` | Drop account |
+| `update you@example.com [--enable\|--disable] [--weight N]` | Change routing settings (`--json`) |
 | `list` | Ranked table (`--json`, `--refresh`) |
+| `stats --json` | Versioned credential-free snapshot (`--refresh`) |
 | `refresh` | Pull Analytics now |
 | `next` | Print least-used email |
 | `use [email]` | Write into `~/.augment/session.json` |
@@ -247,6 +283,7 @@ augpool list --refresh
 - Prefer `augpool run` over `export --env`
 - Never commit `creds/`, session JSON, or share blobs
 - A share blob **is** the full credential — rotate if it leaks
+- For subprocess integrations, import blobs through stdin (`import -`), not argv
 
 ---
 
