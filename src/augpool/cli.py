@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -33,6 +35,7 @@ from augpool.session_io import (
     restore_backup,
 )
 from augpool.state import locked_state, record_selection
+from augpool.usage_view import render_usage_dashboard, usage_report_payload
 
 
 def _root_from_args(args: argparse.Namespace) -> Path:
@@ -259,6 +262,41 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_usage(args: argparse.Namespace) -> int:
+    root = _root_from_args(args)
+    pool = load_pool(root)
+    with locked_state(root) as state:
+        usage = _usage_map(pool, root, force=args.refresh, refresh_if_stale=True)
+        cache = load_usage_cache(root)
+        if args.json:
+            print(
+                json.dumps(
+                    usage_report_payload(pool, state, usage, cache),
+                    indent=2,
+                )
+            )
+            return 0
+
+        color = (
+            not args.no_color
+            and sys.stdout.isatty()
+            and "NO_COLOR" not in os.environ
+            and os.environ.get("TERM") != "dumb"
+        )
+        width = min(120, shutil.get_terminal_size(fallback=(88, 24)).columns)
+        print(
+            render_usage_dashboard(
+                pool,
+                state,
+                usage,
+                cache,
+                width=width,
+                color=color,
+            )
+        )
+    return 0
+
+
 def cmd_next(args: argparse.Namespace) -> int:
     root = _root_from_args(args)
     pool = load_pool(root)
@@ -457,6 +495,26 @@ def build_parser() -> argparse.ArgumentParser:
     ls_p.set_defaults(func=cmd_list)
     rf_p = sub.add_parser("refresh", help="pull Analytics credit usage now")
     rf_p.set_defaults(func=cmd_refresh)
+    usage_p = sub.add_parser(
+        "usage",
+        help="show account credits and local sessions as a terminal dashboard",
+    )
+    usage_p.add_argument(
+        "--json",
+        action="store_true",
+        help="emit structured JSON instead of the dashboard",
+    )
+    usage_p.add_argument(
+        "--refresh",
+        action="store_true",
+        help="refresh Analytics before rendering",
+    )
+    usage_p.add_argument(
+        "--no-color",
+        action="store_true",
+        help="disable ANSI color",
+    )
+    usage_p.set_defaults(func=cmd_usage)
     nx_p = sub.add_parser("next", help="print least-used account email")
     nx_p.add_argument("--json", action="store_true")
     nx_p.set_defaults(func=cmd_next)
@@ -489,7 +547,7 @@ def build_parser() -> argparse.ArgumentParser:
 # via the default: augpool [run-opts] [auggie-args...]  ==  augpool run [run-opts] -- auggie [auggie-args...]
 _SUBCOMMANDS = frozenset({
     "add", "import", "remove", "list", "refresh", "next", "use", "export",
-    "run", "status", "restore", "help",
+    "run", "status", "restore", "usage", "help",
 })
 
 

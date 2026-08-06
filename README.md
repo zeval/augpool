@@ -208,6 +208,35 @@ augpool refresh
 augpool list --refresh
 ```
 
+## Usage dashboard
+
+`usage` turns the pool's Analytics cache and local counters into a compact,
+Tokscale-inspired terminal view:
+
+```bash
+augpool usage
+augpool usage --refresh       # pull Analytics first
+augpool usage --json          # structured report for scripts
+augpool usage --no-color      # also respects NO_COLOR
+```
+
+```text
+augpool usage
+2026-07-08 → 2026-08-06 · updated 2m ago
+
+3 accounts · 8.4k credits · 17 sessions
+────────────────────────────────────────────────────────────────────────
+● teammate@example.com                         1.8k  21.4%  active
+  █████████░░░░░░░░░░░░░░░░░░░░░░░░  6 sessions · used 4m ago
+```
+
+Credits are Augment Analytics consumption for the cached 30-day window.
+Sessions are local account selections (run/use events) recorded by augpool;
+they are not Augment's vendor-side conversation count. The view also surfaces
+active, cooldown, disabled, weight, last-used, cache, and partial-refresh
+information when available. Without Analytics data, bars fall back to local
+sessions.
+
 ---
 
 ## Commands
@@ -221,6 +250,7 @@ augpool list --refresh
 | `export [email] \| --self` | Print share blob (`--env`, `--json`) |
 | `remove you@example.com` | Drop account |
 | `list` | Ranked table (`--json`, `--refresh`) |
+| `usage` | Account credit/session dashboard (`--json`, `--refresh`) |
 | `refresh` | Pull Analytics now |
 | `next` | Print least-used email |
 | `use [email]` | Write into `~/.augment/session.json` |
