@@ -24,14 +24,14 @@ usually **not** enough for agents.
 ### Recommended — pipx
 
 ```bash
-pipx install git+https://github.com/zeval/augpool.git
+pipx install augpool
 # → ~/.local/bin/augpool   (keep ~/.local/bin on PATH)
 ```
 
 ### User install
 
 ```bash
-python3 -m pip install --user git+https://github.com/zeval/augpool.git
+python3 -m pip install --user augpool
 # ensure ~/.local/bin is on PATH for login shells *and* GUI / agent processes
 ```
 

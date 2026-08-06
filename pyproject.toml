@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "augpool"
-version = "0.1.0"
+version = "0.1.1"
 description = "Pool and load-balance Augment Code credentials across accounts"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "augpool" }]
 dependencies = []
 
@@ -17,6 +18,11 @@ dev = ["pytest>=7.0"]
 
 [project.scripts]
 augpool = "augpool.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/zeval/augpool"
+Repository = "https://github.com/zeval/augpool"
+Issues = "https://github.com/zeval/augpool/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
