@@ -275,7 +275,9 @@ def render_usage_dashboard(
             )
         )
     else:
-        lines.append(_paint("30-day account balance", _DIM, color))
+        lines.append(
+            _paint(_clip("current-month account balance", width), _DIM, color)
+        )
 
     credit_total = totals["credits_consumed"]
     credits_summary = (

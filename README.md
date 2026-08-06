@@ -198,6 +198,8 @@ Least-used score uses each account’s session token against:
 
 `GET https://api.augmentcode.com/analytics/v0/credit-usage-by-user`
 
+Credit window is the current UTC calendar month, from day 1 through today.
+
 - Cache: `~/.augpool/cache/` (default TTL ~5 minutes)
 - Auto-pick (`list` / `next` / bare run) refreshes when stale
 - Explicit targets (`export you@…`, `use you@…`) skip refresh
@@ -222,7 +224,7 @@ augpool usage --no-color      # also respects NO_COLOR
 
 ```text
 augpool usage
-2026-07-08 → 2026-08-06 · updated 2m ago
+2026-08-01 → 2026-08-06 · updated 2m ago
 
 3 accounts · 8.4k credits · 17 sessions
 
@@ -233,8 +235,9 @@ Sessions over time · 30d UTC · 12 tracked
   █████████░░░░░░░░░░░░░░░░░░░░░░░░  6 sessions · used 4m ago
 ```
 
-Credits are Augment Analytics consumption for the cached 30-day window.
-Sessions are local account selections (run/use events) recorded by augpool;
+Credits are Augment Analytics consumption for the current UTC calendar month.
+Caches from a different month are refreshed even when still inside the normal
+TTL. Sessions are local account selections (run/use events) recorded by augpool;
 they are not Augment's vendor-side conversation count. The view also surfaces
 active, cooldown, disabled, weight, last-used, cache, and partial-refresh
 information when available. Without Analytics data, bars fall back to local

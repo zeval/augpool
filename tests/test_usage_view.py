@@ -54,7 +54,7 @@ def test_dashboard_shows_account_credit_share_and_local_sessions(
         {"alice@acme.com": 4_200.0, "bob@acme.com": 1_800.0},
         {
             "fetched_at": 9_950.0,
-            "start_date": "2026-07-08",
+            "start_date": "2026-08-01",
             "end_date": "2026-08-06",
             "errors": [],
         },
@@ -73,7 +73,7 @@ def test_dashboard_shows_account_credit_share_and_local_sessions(
     assert "used 2m ago" in output
     assert "bob@acme.com" in output
     assert "active" in output
-    assert "2026-07-08 → 2026-08-06" in output
+    assert "2026-08-01 → 2026-08-06" in output
     assert "updated just now" in output
     assert "Sessions are local account selections" in output
 
@@ -218,6 +218,7 @@ def test_dashboard_explains_local_fallback(two_account_pool, home: Path):
     )
 
     assert "credits unavailable" in output
+    assert "current-month account balance" in output
     assert "Usage bars use local sessions" in output
 
 
@@ -243,7 +244,7 @@ def test_usage_payload_contains_totals_and_account_details(two_account_pool, hom
     state.for_account("alice@acme.com").last_selected_at = 9_900.0
     cache = {
         "fetched_at": 9_950.0,
-        "start_date": "2026-07-08",
+        "start_date": "2026-08-01",
         "end_date": "2026-08-06",
         "errors": ["partial tenant failure"],
     }

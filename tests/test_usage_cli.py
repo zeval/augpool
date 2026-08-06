@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -13,11 +14,12 @@ from augpool.state import load_state, save_state
 
 def _seed_usage(home: Path) -> None:
     now = time.time()
+    today = datetime.now(timezone.utc).date()
     save_usage_cache(
         {
             "fetched_at": now,
-            "start_date": "2026-07-08",
-            "end_date": "2026-08-06",
+            "start_date": today.replace(day=1).isoformat(),
+            "end_date": today.isoformat(),
             "by_id": {"alice@acme.com": 4_200.0, "bob@acme.com": 1_800.0},
             "errors": [],
             "fetches_ok": 1,

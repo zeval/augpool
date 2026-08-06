@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -19,9 +19,9 @@ HttpGetter = Callable[[str, dict[str, str]], dict[str, Any]]
 
 
 def default_date_window(today: date | None = None) -> tuple[str, str]:
-    """Last 30 days UTC inclusive of today."""
-    today = today or date.today()
-    start = today - timedelta(days=29)
+    """Current UTC calendar month, inclusive of today."""
+    today = today or datetime.now(timezone.utc).date()
+    start = today.replace(day=1)
     return start.isoformat(), today.isoformat()
 
 
@@ -269,6 +269,22 @@ def _cache_by_id(cache: dict[str, Any] | None) -> dict[str, float] | None:
     return {str(k): float(v) for k, v in (cache.get("by_id") or {}).items()}
 
 
+def _cache_matches_window(cache: dict[str, Any] | None, start: str, end: str) -> bool:
+    return bool(
+        cache
+        and cache.get("start_date") == start
+        and cache.get("end_date") == end
+    )
+
+
+def _cache_has_usable_data(cache: dict[str, Any] | None) -> bool:
+    return bool(
+        cache
+        and cache.get("by_id") is not None
+        and int(cache.get("fetches_ok") or 0) >= 1
+    )
+
+
 def _refresh_had_usable_data(cache: dict[str, Any], had_token: bool) -> bool:
     """True when a refresh should replace the previous cache as authoritative."""
     if not had_token:
@@ -296,18 +312,33 @@ def get_fresh_usage(
     """
     now = time.time() if now is None else now
     cache = load_usage_cache(root)
-    if not force and cache_is_fresh(cache, pool.usage_cache_ttl_seconds, now=now):
+    today = datetime.now(timezone.utc).date()
+    expected_start, expected_end = default_date_window(today)
+    cache_matches_window = _cache_matches_window(cache, expected_start, expected_end)
+    cache_is_usable = _cache_has_usable_data(cache)
+    if (
+        not force
+        and cache_matches_window
+        and cache_is_usable
+        and cache_is_fresh(cache, pool.usage_cache_ttl_seconds, now=now)
+    ):
         return _cache_by_id(cache)
 
     if not refresh_if_stale and not force:
-        return _cache_by_id(cache)
+        return _cache_by_id(cache) if cache_matches_window and cache_is_usable else None
 
     # Stale/missing (or force): pull now.
     had_token = any(resolve_access_token(a, root) for a in pool.enabled_accounts())
 
-    stale = _cache_by_id(cache)
+    stale = _cache_by_id(cache) if cache_matches_window and cache_is_usable else None
     try:
-        new_cache = refresh_usage(pool, root=root, http_get=http_get, now=now)
+        new_cache = refresh_usage(
+            pool,
+            root=root,
+            http_get=http_get,
+            now=now,
+            today=today,
+        )
     except Exception:
         return stale
 
@@ -319,4 +350,4 @@ def get_fresh_usage(
     if cache is not None and stale is not None:
         save_usage_cache(cache, root)
         return stale
-    return _cache_by_id(new_cache)
+    return None
