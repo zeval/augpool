@@ -5,6 +5,11 @@ description: Publishes a verified augpool feature branch as a GitHub pull reques
 
 # Pull Request
 
+## Related skill
+
+Use `commit` to review, stage, and create the Conventional Commit before
+publishing the branch.
+
 ## Safety gate
 
 All changes go through a PR. Never commit on or push directly to `main` or
@@ -33,7 +38,7 @@ Never run `git push origin main` or an equivalent refspec.
 3. Run task-specific checks. For code changes, run focused tests and
    `python3 -m pytest -q`; for docs/harness changes, run structural checks and
    `git diff --check`.
-4. Commit verified changes with a Conventional Commit message.
+4. Use the `commit` skill to create a verified Conventional Commit.
 5. Confirm branch is ahead of the default branch and remote contains local `HEAD`.
 
 Do not publish with uncommitted changes or known failing required checks. Report a
@@ -54,7 +59,8 @@ gh pr create \
   --body-file /tmp/augpool-pr-body.md
 ```
 
-PR title becomes squash-merge history, so keep it concise and conventional.
+PR title becomes squash-merge history, so it must use the same Conventional
+Commit format as the branch commit.
 
 ## After creation
 
