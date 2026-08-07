@@ -23,6 +23,7 @@ added later, override it only for their subtree.
 - `src/augpool/runner.py`: child-process execution and rate-limit failover.
 - `src/augpool/session_io.py`: session validation, atomic writes, backups, and share blobs.
 - `tests/`: pytest coverage, with reusable fixtures in `tests/conftest.py`.
+- `.agents/skills/commit/SKILL.md`: staged-diff review and Conventional Commit workflow.
 - `.github/workflows/build.yml`: Python test matrix, package build, smoke test, and artifacts.
 - `README.md`: public install, command, behavior, and security contract.
 
@@ -80,8 +81,9 @@ changes, must arrive through a pull request.
   `docs/<slug>`. Check the current branch before committing.
 - Push the checked-out branch with `git push -u origin HEAD`; never use
   `git push origin main`.
-- Use Conventional Commit style for commits and PR titles: `type: short summary`
-  or `type(scope): short summary`.
+- Before staging, committing, or choosing a PR title, load and follow
+  `.agents/skills/commit/SKILL.md`; it is the single source of truth for the
+  commit format and workflow.
 - Fill `.github/pull_request_template.md` with only verified claims and exact
   validation commands. Remove instructional comments and empty optional sections.
 - Do not force-push, merge, or close a PR unless the user explicitly requests it.

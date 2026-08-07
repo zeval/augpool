@@ -31,6 +31,7 @@ Authoring instructions for humans and agents:
 ## Checklist
 
 - [ ] This change was made on a non-default branch and is being delivered by PR.
+- [ ] Commit messages and the PR title follow Conventional Commits.
 - [ ] I reviewed the final diff, including all agent-assisted changes.
 - [ ] Relevant focused tests and the full test suite pass, or exceptions are explained above.
 - [ ] User-visible behavior, commands, formats, and install steps are documented.
