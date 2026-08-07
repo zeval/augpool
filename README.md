@@ -198,6 +198,8 @@ Least-used score uses each account’s session token against:
 
 `GET https://api.augmentcode.com/analytics/v0/credit-usage-by-user`
 
+Credit window is the current UTC calendar month, from day 1 through today.
+
 - Cache: `~/.augpool/cache/` (default TTL ~5 minutes)
 - Auto-pick (`list` / `next` / bare run) refreshes when stale
 - Explicit targets (`export you@…`, `use you@…`) skip refresh
@@ -207,6 +209,44 @@ Least-used score uses each account’s session token against:
 augpool refresh
 augpool list --refresh
 ```
+
+## Usage dashboard
+
+`usage` turns the pool's Analytics cache and local counters into a compact,
+Tokscale-inspired terminal view:
+
+```bash
+augpool usage
+augpool usage --refresh       # pull Analytics first
+augpool usage --json          # structured report for scripts
+augpool usage --no-color      # also respects NO_COLOR
+```
+
+```text
+augpool usage
+2026-08-01 → 2026-08-06 · updated 2m ago
+
+3 accounts · 8.4k credits · 17 sessions
+
+Sessions over time · 30d UTC · 12 tracked
+07-08 ·····················▁··▃·█▂ 08-06
+────────────────────────────────────────────────────────────────────────
+● teammate@example.com                         1.8k  21.4%  active
+  █████████░░░░░░░░░░░░░░░░░░░░░░░░  6 sessions · used 4m ago
+```
+
+Credits are Augment Analytics consumption for the current UTC calendar month.
+Caches from a different month are refreshed even when still inside the normal
+TTL. Sessions are local account selections (run/use events) recorded by augpool;
+they are not Augment's vendor-side conversation count. The view also surfaces
+active, cooldown, disabled, weight, last-used, cache, and partial-refresh
+information when available. Without Analytics data, bars fall back to local
+sessions.
+
+Dated session tracking starts after installing this version; augpool does not
+assign older lifetime counts to invented dates. It keeps 90 days of per-account
+UTC daily buckets and shows the latest 30 days in the dashboard. `--json`
+includes daily totals and per-account counts for the same 30-day window.
 
 ---
 
@@ -221,6 +261,7 @@ augpool list --refresh
 | `export [email] \| --self` | Print share blob (`--env`, `--json`) |
 | `remove you@example.com` | Drop account |
 | `list` | Ranked table (`--json`, `--refresh`) |
+| `usage` | Account credit/session dashboard (`--json`, `--refresh`) |
 | `refresh` | Pull Analytics now |
 | `next` | Print least-used email |
 | `use [email]` | Write into `~/.augment/session.json` |
@@ -235,7 +276,7 @@ augpool list --refresh
 ```text
 ~/.augpool/
   pool.json            # registry (emails, paths, weights)
-  state.json           # local uses, cooldowns, locks
+  state.json           # local uses, daily session history, cooldowns, locks
   cache/usage.json     # Analytics snapshot
   creds/<email>.json   # per-account session (mode 0600)
   backups/             # previous ~/.augment/session.json
