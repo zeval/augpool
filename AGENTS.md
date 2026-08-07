@@ -81,53 +81,14 @@ changes, must arrive through a pull request.
   `docs/<slug>`. Check the current branch before committing.
 - Push the checked-out branch with `git push -u origin HEAD`; never use
   `git push origin main`.
+- Before staging, committing, or choosing a PR title, load and follow
+  `.agents/skills/commit/SKILL.md`; it is the single source of truth for the
+  commit format and workflow.
 - Fill `.github/pull_request_template.md` with only verified claims and exact
   validation commands. Remove instructional comments and empty optional sections.
 - Do not force-push, merge, or close a PR unless the user explicitly requests it.
 - GitHub branch protection should require a pull request for `main`, enforce the
   rule for administrators, block force pushes, and block deletion.
-
-## Conventional Commits
-
-Every commit message and PR title must follow
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
-
-```text
-<type>[optional scope][!]: <imperative summary>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-- Use a lowercase type and optional short noun scope. Keep the header concise,
-  imperative, and free of a trailing period.
-- Choose the type by primary intent: `feat`, `fix`, `docs`, `test`, `refactor`,
-  `perf`, `build`, `ci`, `style`, `chore`, or `revert`.
-- Use `feat` for new user-facing capability and `fix` for a bug correction.
-- Use `build` for packaging or build dependencies; use `ci` for workflow changes.
-- Add a body after a blank line when the reason or behavior is not clear from the
-  header. Explain why and observable impact, not a file-by-file narration.
-- Mark a breaking change with `!` before the colon and/or a
-  `BREAKING CHANGE: <description>` footer.
-- Keep each commit focused. Split independent intents instead of hiding them under
-  `chore`.
-- Never use vague subjects such as `WIP`, `updates`, or `fix stuff`. Do not add
-  tool-attribution footers.
-
-Examples:
-
-```text
-feat(cli): add JSON output to status
-fix(runner): fail over after HTTP 429
-docs: explain stable PATH installation
-ci: test supported Python versions
-feat(session)!: reject legacy share blobs
-```
-
-Before committing, inspect `git diff --cached`, confirm the staged files match one
-intent, run the relevant checks, and use the `commit` skill. Because PRs are
-squash-merged, the PR title follows the same format and becomes `main` history.
 
 ## Done means
 
